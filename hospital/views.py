@@ -11,6 +11,9 @@ from django.contrib import auth
 from django.utils import timezone
 from datetime import date,timedelta,time
 from django.http import HttpResponseRedirect
+import qrcode
+from io import BytesIO
+from base64 import b64encode
 
 ## For Invoice Function
 from django.http import HttpResponse
@@ -67,6 +70,46 @@ def opcost_adm_view(request):
     else:
         auth.logout(request)
         return redirect('login_adm.html')
+    
+
+def generate_appointment_qr(request, appointment_id):
+    """Generate a QR code for the appointment."""
+    # Fetch appointment details
+    appointment = Appointment.objects.get(id=appointment_id)
+    qr_data = f"Patient Name: {appointment.patient.name}, Appointment Date: {appointment.appointment_date}"
+
+    # Create QR code
+    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=10, border=4)
+    qr.add_data(qr_data)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill='black', back_color='white')
+    img_io = BytesIO()
+    img.save(img_io)
+    img_io.seek(0)
+
+    return HttpResponse(img_io, content_type="image/png")
+
+def generate_qr_code(data):
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+
+    # Create an image from the QR code
+    img = qr.make_image(fill='black', back_color='white')
+
+    # Save the image to a BytesIO buffer
+    buffer = BytesIO()
+    img.save(buffer)
+    buffer.seek(0)
+
+    return buffer
+
 
 
 @login_required(login_url='login_adm.html')         #if user is not logged in, redirect to login page
@@ -98,6 +141,9 @@ def bookapp_adm_view(request):
     else:
         auth.logout(request)
         return redirect('login_adm.html')
+    
+
+
 
 @login_required(login_url='login_adm.html')      #if user is not logged in, redirect to login page
 def appointment_particular_adm_view(request,pk):
@@ -1179,176 +1225,272 @@ def login_view(request):
     return render(request,'hospital/Home/login.html')
 
 
-def bill_view(request,pk):
-    #get information from database and render in html webpage
-    padm=PatAdmit.objects.all().filter(id=pk).first()
-    pat=padm.patient
-    doc=padm.doctor
-    d1=padm.admitDate
-    if padm.dischargeDate:
-        d2=padm.dischargeDate
-    else:
-        d2=date.today()
-    days=(d2-d1).days
-    room=OperationCosts.objects.all().filter(name='Room').first()
-    roomcharges=room.cost
-    total_room_charge=roomcharges*days
-    docpro=DoctorProfessional.objects.all().filter(doctor=doc).first()
-    docfee=docpro.admfees
-    hosp=OperationCosts.objects.all().filter(name='Hospital Fee').first()
-    hospfee=hosp.cost
-    mainp=OperationCosts.objects.all().filter(name='Maintenance').first()
-    mainfee=mainp.cost
-    OtherCharge=mainfee+hospfee
-    tot=OtherCharge+docfee+total_room_charge
-    det=[]
+def bill_view(request, pk):
+    # Get information from the database
+    padm = PatAdmit.objects.all().filter(id=pk).first()
+    pat = padm.patient
+    doc = padm.doctor
+    d1 = padm.admitDate
+    d2 = padm.dischargeDate if padm.dischargeDate else date.today()
+    days = (d2 - d1).days
+    room = OperationCosts.objects.all().filter(name='Room').first()
+    roomcharges = room.cost
+    total_room_charge = roomcharges * days
+    docpro = DoctorProfessional.objects.all().filter(doctor=doc).first()
+    docfee = docpro.admfees
+    hosp = OperationCosts.objects.all().filter(name='Hospital Fee').first()
+    hospfee = hosp.cost
+    mainp = OperationCosts.objects.all().filter(name='Maintenance').first()
+    mainfee = mainp.cost
+    OtherCharge = mainfee + hospfee
+    tot = OtherCharge + docfee + total_room_charge
+    det = []
+
     for i in Charges.objects.all().filter(Admitinfo=padm):
         for k in Medicines.objects.all():
-            if k==i.commodity:
-                tot+=i.quantity*k.price
-                det.append([k.name,i.quantity,k.price,i.quantity*k.price])
-    dict={
-            'patientName':pat.firstname,
-            'doctorName':doc.firstname,
-            'admitDate':d1,
-            'releaseDate':d2,
-            'roomcharges':roomcharges,
-            'desc':padm.description,
-            'pat_add':pat.address,
-            'days':days,
-            'tot':tot,
-            'tc':total_room_charge,
-            'doctorFee': docfee,
-            'OtherCharge': OtherCharge,
-            'mainp': mainfee,
-            'hospfee': hospfee,
-            'med': det,
-            'pk': pk
-        }
+            if k == i.commodity:
+                tot += i.quantity * k.price
+                det.append([k.name, i.quantity, k.price, i.quantity * k.price])
+
+    # QR Code generation
+    qr_data = f'http://127.0.0.1:8000/bill/{pk}/'  # Replace with your actual URL format
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(qr_data)
+    qr.make(fit=True)
+
+    # Convert QR code to base64 string to embed in the HTML template
+    qr_img = qr.make_image(fill='black', back_color='white')
+    buffer = BytesIO()
+    qr_img.save(buffer, format="PNG")
+    qr_code_base64 = b64encode(buffer.getvalue()).decode()
+
+    # Context dictionary with QR code
+    context = {
+        'patientName': pat.firstname,
+        'doctorName': doc.firstname,
+        'admitDate': d1,
+        'releaseDate': d2,
+        'roomcharges': roomcharges,
+        'desc': padm.description,
+        'pat_add': pat.address,
+        'days': days,
+        'tot': tot,
+        'tc': total_room_charge,
+        'doctorFee': docfee,
+        'OtherCharge': OtherCharge,
+        'mainp': mainfee,
+        'hospfee': hospfee,
+        'med': det,
+        'pk': pk,
+        'qr_code': qr_code_base64,  # Add QR code data here
+    }
+
+    # Render the appropriate template based on user type
     if check_patient(request.user):
-        return render(request,'hospital/Patient/bill.html',dict)
+        return render(request, 'hospital/Patient/bill.html', context)
     elif check_doctor(request.user):
-        return render(request,'hospital/Doctor/bill.html',dict)
+        return render(request, 'hospital/Doctor/bill.html', context)
     elif check_admin(request.user):
-        return render(request,'hospital/Admin/bill.html',dict)
+        return render(request, 'hospital/Admin/bill.html', context)
     else:
-        return render(request,'hospital/Home/login.html')
+        return render(request, 'hospital/Home/login.html')
 
 
-def bill_apt_view(request,pk):
-    #get information from database and render in html webpage
-    apt=Appointment.objects.all().filter(id=pk).first()
-    pat=apt.patient
-    doc=apt.doctor
-    d=apt.calldate
-    t=apt.calltime
-    docpro=DoctorProfessional.objects.all().filter(doctor=doc).first()
-    docfee=docpro.appfees
-    hosp=OperationCosts.objects.all().filter(name='Hospital Fee').first()
-    hospfee=hosp.cost
-    mainp=OperationCosts.objects.all().filter(name='Maintenance').first()
-    mainfee=mainp.cost
-    OtherCharge=mainfee+hospfee
-    tot=OtherCharge+docfee
-    det=[]
+def bill_apt_view(request, pk):
+    # Get information from the database
+    apt = Appointment.objects.all().filter(id=pk).first()
+    pat = apt.patient
+    doc = apt.doctor
+    d = apt.calldate
+    t = apt.calltime
+    docpro = DoctorProfessional.objects.all().filter(doctor=doc).first()
+    docfee = docpro.appfees
+    hosp = OperationCosts.objects.all().filter(name='Hospital Fee').first()
+    hospfee = hosp.cost
+    mainp = OperationCosts.objects.all().filter(name='Maintenance').first()
+    mainfee = mainp.cost
+    OtherCharge = mainfee + hospfee
+    tot = OtherCharge + docfee
+    det = []
+
     for i in ChargesApt.objects.all().filter(Aptinfo=apt):
         for k in Medicines.objects.all():
-            if k==i.commodity:
-                tot+=i.quantity*k.price
-                det.append([k.name,i.quantity,k.price,i.quantity*k.price])
-    dict={
-            'patientName':pat.firstname,
-            'doctorName':doc.firstname,
-            'aptDate':d,
-            'aptTime':t,
-            'desc':apt.description,
-            'pat_add':pat.address,
-            'tot':tot,
-            'doctorFee': docfee,
-            'OtherCharge': OtherCharge,
-            'mainp': mainfee,
-            'hospfee': hospfee,
-            'med': det,
-            'pk': pk
-        }
+            if k == i.commodity:
+                tot += i.quantity * k.price
+                det.append([k.name, i.quantity, k.price, i.quantity * k.price])
+
+    # QR Code generation
+    qr_data = f'http://127.0.0.1:8000/bill_apt/{pk}/'  # Replace with your actual URL format
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(qr_data)
+    qr.make(fit=True)
+
+    # Convert QR code to base64 string to embed in the HTML template
+    qr_img = qr.make_image(fill='black', back_color='white')
+    buffer = BytesIO()
+    qr_img.save(buffer, format="PNG")
+    qr_code_base64 = b64encode(buffer.getvalue()).decode()
+
+    # Context dictionary with QR code
+    context = {
+        'patientName': pat.firstname,
+        'doctorName': doc.firstname,
+        'aptDate': d,
+        'aptTime': t,
+        'desc': apt.description,
+        'pat_add': pat.address,
+        'tot': tot,
+        'doctorFee': docfee,
+        'OtherCharge': OtherCharge,
+        'mainp': mainfee,
+        'hospfee': hospfee,
+        'med': det,
+        'pk': pk,
+        'qr_code': qr_code_base64,  # Add QR code data here
+    }
+
+    # Render the appropriate template based on user type
     if check_patient(request.user):
-        return render(request,'hospital/Patient/bill_apt.html',dict)
+        return render(request, 'hospital/Patient/bill_apt.html', context)
     elif check_doctor(request.user):
-        return render(request,'hospital/Doctor/bill_apt.html',dict)
+        return render(request, 'hospital/Doctor/bill_apt.html', context)
     elif check_admin(request.user):
-        return render(request,'hospital/Admin/bill_apt.html',dict)
+        return render(request, 'hospital/Admin/bill_apt.html', context)
     else:
-        return render(request,'hospital/Home/login.html')
+        return render(request, 'hospital/Home/login.html')
 
 
-def report_view(request,pk):
-    #get information from database and render in html webpage
-    padm=PatAdmit.objects.all().filter(id=pk).first()
-    pat=padm.patient
-    doc=padm.doctor
-    d1=padm.admitDate
+def report_view(request, pk):
+    # Get information from the database
+    padm = PatAdmit.objects.all().filter(id=pk).first()
+    pat = padm.patient
+    doc = padm.doctor
+    d1 = padm.admitDate
     if padm.dischargeDate:
-        d2=padm.dischargeDate
+        d2 = padm.dischargeDate
     else:
-        d2=date.today()
-    days=(d2-d1).days
-    det=[]
+        d2 = date.today()
+    days = (d2 - d1).days
+    det = []
+
     for i in Charges.objects.all().filter(Admitinfo=padm):
         for k in Medicines.objects.all():
-            if k==i.commodity:
+            if k == i.commodity:
                 det.append([k.name])
-    dict={
-            'patientName':pat.firstname,
-            'doctorName':doc.firstname,
-            'admitDate':d1,
-            'releaseDate':d2,
-            'desc':padm.description,
-            'pat_add':pat.address,
-            'days':days,
-            'med': det,
-            'pk': pk
-        }
+
+    # QR Code generation
+    qr_data = f'http://127.0.0.1:8000/report/{pk}/'  # Replace with your actual URL format
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(qr_data)
+    qr.make(fit=True)
+
+    # Convert QR code to base64 string to embed in the HTML template
+    qr_img = qr.make_image(fill='black', back_color='white')
+    buffer = BytesIO()
+    qr_img.save(buffer, format="PNG")
+    qr_code_base64 = b64encode(buffer.getvalue()).decode()
+
+    # Context dictionary with QR code
+    context = {
+        'patientName': pat.firstname,
+        'doctorName': doc.firstname,
+        'admitDate': d1,
+        'releaseDate': d2,
+        'desc': padm.description,
+        'pat_add': pat.address,
+        'days': days,
+        'med': det,
+        'pk': pk,
+        'qr_code': qr_code_base64,  # Add QR code data here
+    }
+
+    # Render the appropriate template based on user type
     if check_patient(request.user):
-        return render(request,'hospital/Patient/report.html',dict)
+        return render(request, 'hospital/Patient/report.html', context)
     elif check_doctor(request.user):
-        return render(request,'hospital/Doctor/report.html',dict)
+        return render(request, 'hospital/Doctor/report.html', context)
     elif check_admin(request.user):
-        return render(request,'hospital/Admin/report.html',dict)
+        return render(request, 'hospital/Admin/report.html', context)
     else:
-        return render(request,'hospital/Home/login.html')
+        return render(request, 'hospital/Home/login.html')
 
 
-def report_apt_view(request,pk):
-    #get information from database and render in html webpage
-    apt=Appointment.objects.all().filter(id=pk).first()
-    pat=apt.patient
-    doc=apt.doctor
-    d=apt.calldate
-    t=apt.calltime
-    det=[]
+def report_apt_view(request, pk):
+    # Get information from the database
+    apt = Appointment.objects.all().filter(id=pk).first()
+    pat = apt.patient
+    doc = apt.doctor
+    d = apt.calldate
+    t = apt.calltime
+    det = []
+
     for i in ChargesApt.objects.all().filter(Aptinfo=apt):
         for k in Medicines.objects.all():
-            if k==i.commodity:
+            if k == i.commodity:
                 det.append([k.name])
-    dict={
-            'patientName':pat.firstname,
-            'doctorName':doc.firstname,
-            'aptDate':d,
-            'aptTime':t,
-            'desc':apt.description,
-            'pat_add':pat.address,
-            'med': det,
-            'pk': pk
-        }
+
+    # Extract medicine names from 'det' (assuming 'det' contains a list of lists)
+    medicines = [m[0] for m in det]  # Flatten the list to just the names
+
+    # Join the medicine names into a single string separated by commas (for multiple medicines)
+    medicines_str = ", ".join(medicines)
+
+    # QR Code generation with only the medicine names
+    qr_data = f"Medicines prescribed: {medicines_str}"
+
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(qr_data)
+    qr.make(fit=True)
+
+    # Convert QR code to base64 string to embed in the HTML template
+    qr_img = qr.make_image(fill='black', back_color='white')
+    buffer = BytesIO()
+    qr_img.save(buffer, format="PNG")
+    qr_code_base64 = b64encode(buffer.getvalue()).decode()
+
+    # Context dictionary with QR code
+    context = {
+        'patientName': pat.firstname,
+        'doctorName': doc.firstname,
+        'aptDate': d,
+        'aptTime': t,
+        'desc': apt.description,
+        'pat_add': pat.address,
+        'med': det,
+        'pk': pk,
+        'qr_code': qr_code_base64,  # Add QR code data here
+    }
+
+    # Render the appropriate template based on user type
     if check_patient(request.user):
-        return render(request,'hospital/Patient/report_apt.html',dict)
+        return render(request, 'hospital/Patient/report_apt.html', context)
     elif check_doctor(request.user):
-        return render(request,'hospital/Doctor/report_apt.html',dict)
+        return render(request, 'hospital/Doctor/report_apt.html', context)
     elif check_admin(request.user):
-        return render(request,'hospital/Admin/report_apt.html',dict)
+        return render(request, 'hospital/Admin/report_apt.html', context)
     else:
-        return render(request,'hospital/Home/login.html')
-    
+        return render(request, 'hospital/Home/login.html')
+
 
 
 
@@ -1363,34 +1505,52 @@ def check_patient(user):#check if user is patient
 
 
 
-def render_pdf_report_view(request,pk):
-    #get information from database
+def render_pdf_report_view(request, pk):
+    # get information from database
     template_path = 'hospital/report_pdf.html'
-    padm=PatAdmit.objects.all().filter(id=pk).first()
-    pat=padm.patient
-    doc=padm.doctor
-    d1=padm.admitDate
+    padm = PatAdmit.objects.all().filter(id=pk).first()
+    pat = padm.patient
+    doc = padm.doctor
+    d1 = padm.admitDate
     if padm.dischargeDate:
-        d2=padm.dischargeDate
+        d2 = padm.dischargeDate
     else:
-        d2=date.today()
-    days=(d2-d1).days
-    det=[]
+        d2 = date.today()
+    days = (d2 - d1).days
+    det = []
     for i in Charges.objects.all().filter(Admitinfo=padm):
         for k in Medicines.objects.all():
-            if k==i.commodity:
+            if k == i.commodity:
                 det.append([k.name])
-    context={
-            'patientName':pat.firstname,
-            'doctorName':doc.firstname,
-            'admitDate':d1,
-            'releaseDate':d2,
-            'desc':padm.description,
-            'pat_add':pat.address,
-            'days':days,
-            'med': det
-        }
-    #context = {'myvar': 'this is your template context'}
+    context = {
+        'patientName': pat.firstname,
+        'doctorName': doc.firstname,
+        'admitDate': d1,
+        'releaseDate': d2,
+        'desc': padm.description,
+        'pat_add': pat.address,
+        'days': days,
+        'med': det,
+    }
+
+    # QR Code for report URL
+    qr_data = f'http://127.0.0.1:8000/report/{pk}/'  # Replace with the actual URL
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(qr_data)
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill='black', back_color='white')
+    buffer = BytesIO()
+    qr_img.save(buffer, format="PNG")
+    qr_code_base64 = b64encode(buffer.getvalue()).decode()
+
+    # Add QR code to context
+    context['qr_code'] = qr_code_base64
+
     # Create a Django response object, and specify content_type as pdf
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = 'attachment; filename="report.pdf"'
@@ -1400,100 +1560,134 @@ def render_pdf_report_view(request,pk):
 
     # create a pdf
     pisa_status = pisa.CreatePDF(
-       html, dest=response)
-    # if error then show some funy view
+        html, dest=response)
+    # if error then show some funny view
     if pisa_status.err:
-       return HttpResponse('We had some errors <pre>' + html + '</pre>')
+        return HttpResponse('We had some errors <pre>' + html + '</pre>')
     return response
 
-
-def render_pdf_bill_view(request,pk):
-    #get information from database
+def render_pdf_bill_view(request, pk):
+    # get information from database
     template_path = 'hospital/bill_pdf.html'
-    padm=PatAdmit.objects.all().filter(id=pk).first()
-    pat=padm.patient
-    doc=padm.doctor
-    d1=padm.admitDate
+    padm = PatAdmit.objects.all().filter(id=pk).first()
+    pat = padm.patient
+    doc = padm.doctor
+    d1 = padm.admitDate
     if padm.dischargeDate:
-        d2=padm.dischargeDate
+        d2 = padm.dischargeDate
     else:
-        d2=date.today()
-    days=(d2-d1).days
-    room=OperationCosts.objects.all().filter(name='Room').first()
-    roomcharges=room.cost
-    total_room_charge=roomcharges*days
-    docpro=DoctorProfessional.objects.all().filter(doctor=doc).first()
-    docfee=docpro.admfees
-    hosp=OperationCosts.objects.all().filter(name='Hospital Fee').first()
-    hospfee=hosp.cost
-    mainp=OperationCosts.objects.all().filter(name='Maintenance').first()
-    mainfee=mainp.cost
-    OtherCharge=mainfee+hospfee
-    tot=OtherCharge+docfee+total_room_charge
-    det=[]
+        d2 = date.today()
+    days = (d2 - d1).days
+    room = OperationCosts.objects.all().filter(name='Room').first()
+    roomcharges = room.cost
+    total_room_charge = roomcharges * days
+    docpro = DoctorProfessional.objects.all().filter(doctor=doc).first()
+    docfee = docpro.admfees
+    hosp = OperationCosts.objects.all().filter(name='Hospital Fee').first()
+    hospfee = hosp.cost
+    mainp = OperationCosts.objects.all().filter(name='Maintenance').first()
+    mainfee = mainp.cost
+    OtherCharge = mainfee + hospfee
+    tot = OtherCharge + docfee + total_room_charge
+    det = []
     for i in Charges.objects.all().filter(Admitinfo=padm):
         for k in Medicines.objects.all():
-            if k==i.commodity:
-                tot+=i.quantity*k.price
-                det.append([k.name,i.quantity,k.price,i.quantity*k.price])
-    context={
-            'patientName':pat.firstname,
-            'doctorName':doc.firstname,
-            'admitDate':d1,
-            'releaseDate':d2,
-            'roomCharge':roomcharges,
-            'desc':padm.description,
-            'pat_add':pat.address,
-            'days':days,
-            'tot':tot,
-            'tc':total_room_charge,
-            'doctorFee': docfee,
-            'OtherCharge': OtherCharge,
-            'mainp': mainfee,
-            'hospfee': hospfee,
-            'med': det
-        }
-    #context = {'myvar': 'this is your template context'}
+            if k == i.commodity:
+                tot += i.quantity * k.price
+                det.append([k.name, i.quantity, k.price, i.quantity * k.price])
+    context = {
+        'patientName': pat.firstname,
+        'doctorName': doc.firstname,
+        'admitDate': d1,
+        'releaseDate': d2,
+        'roomCharge': roomcharges,
+        'desc': padm.description,
+        'pat_add': pat.address,
+        'days': days,
+        'tot': tot,
+        'tc': total_room_charge,
+        'doctorFee': docfee,
+        'OtherCharge': OtherCharge,
+        'mainp': mainfee,
+        'hospfee': hospfee,
+        'med': det
+    }
+
+    # QR Code for bill URL
+    qr_data = f'http://127.0.0.1:8000/bill/{pk}/'  # Replace with actual bill URL
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(qr_data)
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill='black', back_color='white')
+    buffer = BytesIO()
+    qr_img.save(buffer, format="PNG")
+    qr_code_base64 = b64encode(buffer.getvalue()).decode()
+
+    # Add QR code to context
+    context['qr_code'] = qr_code_base64
+
     # Create a Django response object, and specify content_type as pdf
     response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = 'attachment; filename="report.pdf"'
+    response['Content-Disposition'] = 'attachment; filename="bill.pdf"'
     # find the template and render it.
     template = get_template(template_path)
     html = template.render(context)
 
     # create a pdf
     pisa_status = pisa.CreatePDF(
-       html, dest=response)
+        html, dest=response)
     # if error then show some funy view
     if pisa_status.err:
-       return HttpResponse('We had some errors <pre>' + html + '</pre>')
+        return HttpResponse('We had some errors <pre>' + html + '</pre>')
     return response
-
 ######apt
 
-def render_pdf_report_apt_view(request,pk):
-    #get information from database
+def render_pdf_report_apt_view(request, pk):
+    # get information from database
     template_path = 'hospital/report_apt_pdf.html'
-    apt=Appointment.objects.all().filter(id=pk).first()
-    pat=apt.patient
-    doc=apt.doctor
-    d=apt.calldate
-    t=apt.calltime
-    det=[]
+    apt = Appointment.objects.all().filter(id=pk).first()
+    pat = apt.patient
+    doc = apt.doctor
+    d = apt.calldate
+    t = apt.calltime
+    det = []
     for i in ChargesApt.objects.all().filter(Aptinfo=apt):
         for k in Medicines.objects.all():
-            if k==i.commodity:
+            if k == i.commodity:
                 det.append([k.name])
-    context={
-            'patientName':pat.firstname,
-            'doctorName':doc.firstname,
-            'aptDate':d,
-            'aptTime':t,
-            'desc':apt.description,
-            'pat_add':pat.address,
-            'med': det
-        }
-    #context = {'myvar': 'this is your template context'}
+    context = {
+        'patientName': pat.firstname,
+        'doctorName': doc.firstname,
+        'aptDate': d,
+        'aptTime': t,
+        'desc': apt.description,
+        'pat_add': pat.address,
+        'med': det
+    }
+
+    # QR Code for appointment details URL
+    qr_data = f'http://127.0.0.1:8000/appointment/{pk}/'  # Replace with actual appointment URL
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(qr_data)
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill='black', back_color='white')
+    buffer = BytesIO()
+    qr_img.save(buffer, format="PNG")
+    qr_code_base64 = b64encode(buffer.getvalue()).decode()
+
+    # Add QR code to context
+    context['qr_code'] = qr_code_base64
+
     # Create a Django response object, and specify content_type as pdf
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = 'attachment; filename="report.pdf"'
@@ -1503,63 +1697,75 @@ def render_pdf_report_apt_view(request,pk):
 
     # create a pdf
     pisa_status = pisa.CreatePDF(
-       html, dest=response)
+        html, dest=response)
     # if error then show some funy view
     if pisa_status.err:
-       return HttpResponse('We had some errors <pre>' + html + '</pre>')
+        return HttpResponse('We had some errors <pre>' + html + '</pre>')
     return response
 
-
-def render_pdf_bill_apt_view(request,pk):
-    #get information from database
+def render_pdf_bill_apt_view(request, pk):
+    # Get information from database
     template_path = 'hospital/bill_apt_pdf.html'
-    apt=Appointment.objects.all().filter(id=pk).first()
-    pat=apt.patient
-    doc=apt.doctor
-    d=apt.calldate
-    t=apt.calltime
-    docpro=DoctorProfessional.objects.all().filter(doctor=doc).first()
-    docfee=docpro.appfees
-    hosp=OperationCosts.objects.all().filter(name='Hospital Fee').first()
-    hospfee=hosp.cost
-    mainp=OperationCosts.objects.all().filter(name='Maintenance').first()
-    mainfee=mainp.cost
-    OtherCharge=mainfee+hospfee
-    tot=OtherCharge+docfee
-    det=[]
-    for i in ChargesApt.objects.all().filter(Aptinfo=apt):
+    apt = Appointment.objects.filter(id=pk).first()
+    pat = apt.patient
+    doc = apt.doctor
+    d = apt.calldate
+    t = apt.calltime
+    docpro = DoctorProfessional.objects.filter(doctor=doc).first()
+    docfee = docpro.appfees
+    hosp = OperationCosts.objects.filter(name='Hospital Fee').first()
+    hospfee = hosp.cost
+    mainp = OperationCosts.objects.filter(name='Maintenance').first()
+    mainfee = mainp.cost
+    OtherCharge = mainfee + hospfee
+    tot = OtherCharge + docfee
+    det = []
+
+    # Generate the QR code for the appointment URL
+    qr_data = f'http://127.0.0.1:8000/appointment/{pk}/'  # Replace with the actual domain if in production
+    qr_img = qrcode.make(qr_data)
+    qr_buffer = BytesIO()
+    qr_img.save(qr_buffer)
+    qr_buffer.seek(0)  # Rewind the buffer to the beginning
+
+    # Process Charges and Medicines
+    for i in ChargesApt.objects.filter(Aptinfo=apt):
         for k in Medicines.objects.all():
-            if k==i.commodity:
-                tot+=i.quantity*k.price
-                det.append([k.name,i.quantity,k.price,i.quantity*k.price])
-    context={
-            'patientName':pat.firstname,
-            'doctorName':doc.firstname,
-            'aptDate':d,
-            'aptTime':t,
-            'desc':apt.description,
-            'pat_add':pat.address,
-            'tot':tot,
-            'doctorFee': docfee,
-            'OtherCharge': OtherCharge,
-            'mainp': mainfee,
-            'hospfee': hospfee,
-            'med': det
-        }
-    #context = {'myvar': 'this is your template context'}
-    # Create a Django response object, and specify content_type as pdf
+            if k == i.commodity:
+                tot += i.quantity * k.price
+                det.append([k.name, i.quantity, k.price, i.quantity * k.price])
+
+    # Prepare the context for rendering the PDF
+    context = {
+        'patientName': pat.firstname,
+        'doctorName': doc.firstname,
+        'aptDate': d,
+        'aptTime': t,
+        'desc': apt.description,
+        'pat_add': pat.address,
+        'tot': tot,
+        'doctorFee': docfee,
+        'OtherCharge': OtherCharge,
+        'mainp': mainfee,
+        'hospfee': hospfee,
+        'med': det,
+        'qr_code': qr_buffer  # Pass the QR code image to the context
+    }
+
+    # Create a Django response object, and specify content_type as PDF
     response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = 'attachment; filename="report.pdf"'
-    # find the template and render it.
+    response['Content-Disposition'] = 'attachment; filename="bill_appointment.pdf"'
+
+    # Find the template and render it
     template = get_template(template_path)
     html = template.render(context)
 
-    # create a pdf
-    pisa_status = pisa.CreatePDF(
-       html, dest=response)
-    # if error then show some funy view
+    # Create a PDF
+    pisa_status = pisa.CreatePDF(html, dest=response)
+    
     if pisa_status.err:
-       return HttpResponse('We had some errors <pre>' + html + '</pre>')
+        return HttpResponse(f'We had some errors <pre>{html}</pre>')
+
     return response
 
 @login_required(login_url='login_adm.html')

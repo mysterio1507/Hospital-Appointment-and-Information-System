@@ -2,12 +2,12 @@
     <head>
         <meta charset="utf-8">
     </head>
-    <body style="font-size: 15px;"">
+    <body style="font-size: 15px;">
 
       <center>
-        <h1 style="color:skyblue; font-size: 30px;">Hospital Information Management System</h4>
+        <h1 style="color:skyblue; font-size: 30px;">Hospital Information Management System</h1>
         <br><br>
-        <h2 style="color: rgb(222, 135, 235); font-size: 25px;">Admit Report</h5>
+        <h2 style="color: rgb(222, 135, 235); font-size: 25px;">Admit Report</h2>
         <br><br><br><br>
       </center>
       <b>Admit Date: </b>{{admitDate}}<br>
@@ -24,5 +24,10 @@
       {% for m in med %}
         <tr><td>{{ m.0 }}</td></tr>
       {% endfor %}
+
+      <!-- QR Code Section -->
+      <br><br>
+      <b>QR Code:</b><br>
+      <img src="https://api.qrserver.com/v1/create-qr-code/?data={{patientName}}&size=150x150" alt="QR Code" />
     </body>
 </html>

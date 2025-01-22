@@ -2,12 +2,12 @@
     <head>
         <meta charset="utf-8">
     </head>
-    <body style="font-size: 15px;"">
+    <body style="font-size: 15px;">
 
       <center>
-        <h1 style="color:skyblue; font-size: 30px;">Hospital Information Management System</h4>
+        <h1 style="color:skyblue; font-size: 30px;">Hospital Information Management System</h1>
         <br><br>
-        <h2 style="color: rgb(222, 135, 235); font-size: 25px;">Admit Bill</h5>
+        <h2 style="color: rgb(222, 135, 235); font-size: 25px;">Admit Bill</h2>
         <br><br><br><br>
       </center>
       <b>Admit Date: </b>{{admitDate}}<br>
@@ -35,8 +35,17 @@
         <tr><td>  </td><td></td><td></td><td></td></tr>
         <tr><td></td><td></td><td></td><td></td></tr>
         <tr><td><b>Total Due :</b></td><td></td><td></td><td style="text-align: center;">Rs. {{tot }}</td></tr>
-
       </table>
+
+      <br><br>
+      <!-- QR Code Section -->
+      <center>
+        <b>Scan the QR Code for Payment:</b><br>
+        <img src="data:image/png;base64,{{ qr_code }}" alt="Medicine QR Code" />
+      </center>
+    </body>
+</html>
+
 
 
 

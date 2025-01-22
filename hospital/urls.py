@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.urls import include, path
 from hospital import views
 from django.contrib.auth import views as auth_views
-from django.conf.urls import include, url
+from django.urls import include, re_path
 
 urlpatterns = [
     path('',views.home_view,name=''),
@@ -79,5 +79,11 @@ urlpatterns = [
     path('downloadreport/<int:pk>',views.render_pdf_report_view,name="downloadreport"),
     path('downloadbill/<int:pk>',views.render_pdf_bill_view,name="downloadbill"), 
     path('downloadreport_apt/<int:pk>',views.render_pdf_report_apt_view,name="downloadreport_apt"),
-    path('downloadbill_apt/<int:pk>',views.render_pdf_bill_apt_view,name="downloadbill_apt"),       
+    path('downloadbill_apt/<int:pk>',views.render_pdf_bill_apt_view,name="downloadbill_apt"),
+    path('generate_qr/<int:appointment_id>/', views.generate_qr_code, name='generate_qr'),       
+    path('appointment/<int:pk>/bill_pdf/', views.render_pdf_bill_apt_view, name='render_pdf_bill_apt_view'),
+    path('generate_qr/<int:appointment_id>/', views.generate_appointment_qr, name='generate_appointment_qr'),
+    
+
+
 ]

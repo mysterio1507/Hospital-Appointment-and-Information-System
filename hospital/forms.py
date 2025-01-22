@@ -7,13 +7,19 @@ import datetime
 from django.forms.widgets import SelectDateWidget
 from django.utils import timezone
 
-dep=[('Cardiologist','Cardiologist'),
-('Dermatologist','Dermatologist'),
-('Emergency Medicine Specialist','Emergency Medicine Specialist'),
-('Allergist/Immunologist','Allergist/Immunologist'),
-('Anesthesiologist','Anesthesiologist'),
-('Colon and Rectal Surgeon','Colon and Rectal Surgeon')
+dep = [
+    ('Ayurvedic Doctor', 'Ayurvedic Doctor'),
+    ('Siddha Doctor', 'Siddha Doctor'),
+    ('Unani Practitioner', 'Unani Practitioner'),
+    ('Homeopathy Specialist', 'Homeopathy Specialist'),
+    ('Yoga and Naturopathy Expert', 'Yoga and Naturopathy Expert'),
+    ('Panchakarma Specialist', 'Panchakarma Specialist'),
+    ('Herbal Medicine Practitioner', 'Herbal Medicine Practitioner'),
+    ('Traditional Medicine Expert', 'Traditional Medicine Expert'),
+    ('Holistic Health Practitioner', 'Holistic Health Practitioner'),
+    ('Diet and Lifestyle Consultant', 'Diet and Lifestyle Consultant'),
 ]
+
 
 class ContactusForm(forms.Form):    #contact us form (feedback), used by patients/doctors to send feedbacks using mail to admins
     Name = forms.CharField(max_length=30,label="",widget=forms.TextInput(attrs={'placeholder': 'NAME'}))
